@@ -33,10 +33,11 @@
   label { font-size: 13px; color: #666; }
   body.dark label { color: #888; }
 
-  textarea { width: 100%; min-height: 220px; resize: vertical; border-radius: 8px; border: 1px solid #ddd; padding: 12px; font-size: 15px; line-height: 1.6; background: #fff; color: #1a1a1a; font-family: inherit; transition: background 0.2s, color 0.2s, border-color 0.2s; }
+  textarea { width: 100%; min-height: 220px; resize: vertical; border-radius: 8px; border: 1px solid #ddd; padding: 12px; font-size: 15px; line-height: 1.6; background: #fff; color: #1a1a1a; font-family: system-ui, 'Segoe UI Symbol', 'Noto Sans Symbols', 'Symbola', sans-serif; transition: background 0.2s, color 0.2s, border-color 0.2s; }
   textarea:focus { outline: none; border-color: #888; }
   textarea[readonly] { background: #f9f9f7; color: #1a1a1a; cursor: default; }
 
+  .note { min-height: 18px; }
   body.dark textarea { background: #252525; color: #e8e8e2; border-color: #3a3a3a; }
   body.dark textarea[readonly] { background: #1e1e1e; color: #e8e8e2; }
 
@@ -63,7 +64,7 @@
 <div class="panels">
   <div class="panel">
     <label id="lbl-in">English text</label>
-    <textarea id="input" placeholder="Type here…" oninput="translate()"></textarea>
+    <textarea id="input" placeholder="Type here…" oninput="doTranslate()"></textarea>
   </div>
   <div class="panel">
     <label id="lbl-out">PickleLang</label>
@@ -98,23 +99,38 @@ const WRITTEN_REV = {
 };
 
 const PHONETIC_FWD = [
-  ["TH","Ther"],["th","ther"],["Th","Ther"],
-  ["A","Ar"],["E","El"],["I","Is"],["O","Or"],["U","Ur"],
-  ["N","Ner"],["L","Ler"],["R","Ral"],["M","Mer"],["S","Ser"],
-  ["T","Tal"],["D","Del"],["K","Kar"],["V","Var"],["Z","Zel"],
-  ["H","Hal"],["Y","Yar"],["W","Wal"],["F","Fal"],
-  ["a","ar"],["e","el"],["i","is"],["o","or"],["u","ur"],
-  ["n","ner"],["l","ler"],["r","ral"],["m","mer"],["s","ser"],
-  ["t","tal"],["d","del"],["k","kar"],["v","var"],["z","zel"],
-  ["h","hal"],["y","yar"],["w","wal"],["f","fal"]
+  ["TH","Val"],["th","val"],["Th","Val"],
+  ["A","Nen"],["E","Vor"],["I","Sha"],["O","Tel"],["U","Mur"],
+  ["N","Rei"],["L","Vak"],["R","Sol"],["M","Ith"],["S","Neth"],
+  ["T","Kor"],["D","Ves"],["K","Ar"],["V","Thal"],["Z","Yren"],
+  ["H","Mor"],["Y","Kesh"],["W","Sor"],["F","Dren"],
+  ["a","nen"],["e","vor"],["i","sha"],["o","tel"],["u","mur"],
+  ["n","rei"],["l","vak"],["r","sol"],["m","ith"],["s","neth"],
+  ["t","kor"],["d","ves"],["k","ar"],["v","thal"],["z","yren"],
+  ["h","mor"],["y","kesh"],["w","sor"],["f","dren"]
 ];
 
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 function makePat(pairs) {
-  return new RegExp(pairs.map(([k])=>k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'));
+  return new RegExp(
+    pairs
+      .map(([k]) => escapeRegExp(k))
+      .sort((a, b) => b.length - a.length)
+      .join('|'),
+    'gu'
+  );
 }
 function makeMap(pairs) { return Object.fromEntries(pairs); }
 function makeRevPat(obj) {
-  return new RegExp(Object.keys(obj).map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'));
+  return new RegExp(
+    Object.keys(obj)
+      .map(k => escapeRegExp(k))
+      .sort((a, b) => b.length - a.length)
+      .join('|'),
+    'gu'
+  );
 }
 
 const wFwdPat = makePat(WRITTEN_FWD), wFwdMap = makeMap(WRITTEN_FWD);
@@ -134,7 +150,7 @@ function setScript(s) {
   } else {
     revBtn.disabled = false;
   }
-  reset();
+  doTranslate();
 }
 
 function setDir(d) {
@@ -143,7 +159,7 @@ function setDir(d) {
   document.getElementById('btn-rev').classList.toggle('active', d==='reverse');
   document.getElementById('lbl-in').textContent  = d==='forward' ? 'English text' : 'PickleLang';
   document.getElementById('lbl-out').textContent = d==='forward' ? 'PickleLang'   : 'English text';
-  reset();
+  doTranslate();
 }
 
 function reset() {
@@ -152,8 +168,11 @@ function reset() {
   document.getElementById('note').textContent = '';
 }
 
-function translate() {
-  const txt = document.getElementById('input').value;
+function doTranslate() {
+  let txt = document.getElementById('input').value;
+  if ((script === 'written' && dir === 'forward') || script === 'phonetic') {
+    txt = txt.replace(/([A-Za-z])\1+/g, '$1');
+  }
   let out = '';
   if (script === 'written') {
     out = dir === 'forward'
@@ -163,17 +182,45 @@ function translate() {
     out = txt.replace(pFwdPat, m => pFwdMap[m]);
   }
   document.getElementById('output').value = out;
+  document.getElementById('note').textContent = out ? 'Translated text ready.' : 'No translation produced.';
+}
+
+function fallbackCopy(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    return true;
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
 
 function copyOut() {
   const v = document.getElementById('output').value;
-  if (!v) return;
-  navigator.clipboard.writeText(v).then(() => {
-    const btn = document.getElementById('copy-btn');
-    btn.textContent = 'Copied!';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
-  });
+  if (!v) {
+    document.getElementById('note').textContent = 'Nothing to copy.';
+    return;
+  }
+  navigator.clipboard.writeText(v)
+    .then(() => {
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      document.getElementById('note').textContent = 'Copied to clipboard.';
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    })
+    .catch(() => {
+      if (fallbackCopy(v)) {
+        document.getElementById('note').textContent = 'Copied using fallback.';
+      } else {
+        document.getElementById('note').textContent = 'Clipboard denied; copy failed.';
+      }
+    });
 }
 
 function toggleDark() {
