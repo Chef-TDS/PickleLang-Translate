@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Letter Replacer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; min-height: 100vh; padding: 2rem; transition: background 0.2s, color 0.2s; }
+  body.dark { background: #1a1a1a; color: #e8e8e2; }
+
+  h1 { font-size: 1.4rem; font-weight: 500; margin-bottom: 1.5rem; }
+
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .btn-group { display: flex; gap: 6px; }
+  .divider { width: 1px; height: 28px; background: #ccc; }
+  body.dark .divider { background: #444; }
+
+  button { padding: 7px 18px; border-radius: 8px; border: 1px solid #ccc; background: transparent; cursor: pointer; font-size: 14px; color: #555; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+  button.active { background: #fff; color: #111; border-color: #888; font-weight: 500; }
+  button:disabled { opacity: 0.35; cursor: default; }
+
+  body.dark button { border-color: #444; color: #aaa; }
+  body.dark button.active { background: #2e2e2e; color: #f0f0ea; border-color: #666; }
+
+  .dark-toggle { margin-left: auto; padding: 7px 14px; font-size: 18px; border-radius: 8px; border: 1px solid #ccc; background: transparent; cursor: pointer; line-height: 1; }
+  body.dark .dark-toggle { border-color: #444; }
+
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .panels { grid-template-columns: 1fr; } }
+  .panel { display: flex; flex-direction: column; gap: 8px; }
+
+  label { font-size: 13px; color: #666; }
+  body.dark label { color: #888; }
+
+  textarea { width: 100%; min-height: 220px; resize: vertical; border-radius: 8px; border: 1px solid #ddd; padding: 12px; font-size: 15px; line-height: 1.6; background: #fff; color: #1a1a1a; font-family: inherit; transition: background 0.2s, color 0.2s, border-color 0.2s; }
+  textarea:focus { outline: none; border-color: #888; }
+  textarea[readonly] { background: #f9f9f7; color: #1a1a1a; cursor: default; }
+
+  body.dark textarea { background: #252525; color: #e8e8e2; border-color: #3a3a3a; }
+  body.dark textarea[readonly] { background: #1e1e1e; color: #e8e8e2; }
+
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .note { font-size: 12px; color: #999; }
+  .copy-btn { padding: 5px 14px; font-size: 13px; flex-shrink: 0; }
+  .copy-btn.copied { color: green; border-color: green; }
+</style>
+</head>
+<body>
+<h1>Letter Replacer</h1>
+<div class="toolbar">
+  <div class="btn-group">
+    <button id="btn-written" class="active" onclick="setScript('written')">Written</button>
+    <button id="btn-phonetic" onclick="setScript('phonetic')">Phonetic</button>
+  </div>
+  <div class="divider"></div>
+  <div class="btn-group">
+    <button id="btn-fwd" class="active" onclick="setDir('forward')">English → PickleLang</button>
+    <button id="btn-rev" onclick="setDir('reverse')">PickleLang → English</button>
+  </div>
+  <button class="dark-toggle" id="dark-toggle" onclick="toggleDark()" title="Toggle dark mode">🌙</button>
+</div>
+<div class="panels">
+  <div class="panel">
+    <label id="lbl-in">English text</label>
+    <textarea id="input" placeholder="Type here…" oninput="translate()"></textarea>
+  </div>
+  <div class="panel">
+    <label id="lbl-out">PickleLang</label>
+    <textarea id="output" readonly></textarea>
+    <div class="row">
+      <span class="note" id="note"></span>
+      <button class="copy-btn" id="copy-btn" onclick="copyOut()">Copy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const WRITTEN_FWD = [
+  ["TH","𐔓"],["th","𐔓"],["Th","𐔓"],
+  ["A","⊣"],["E","ᒲ"],["I","Ж"],["O","𐔂"],["U","𐔄"],
+  ["N","𐔅"],["L","𐔆"],["R","𐔇"],["M","𐔈"],["S","𐔉"],
+  ["T","𐔊"],["D","𐔋"],["K","𐔌"],["V","𐔍"],["Z","𐔎"],
+  ["H","ʖ"],["Y","𐔐"],["W","𐔑"],["F","𐔒"],
+  ["a","⊣"],["e","ᒲ"],["i","Ж"],["o","𐔂"],["u","𐔄"],
+  ["n","𐔅"],["l","𐔆"],["r","𐔇"],["m","𐔈"],["s","𐔉"],
+  ["t","𐔊"],["d","𐔋"],["k","𐔌"],["v","𐔍"],["z","𐔎"],
+  ["h","ʖ"],["y","𐔐"],["w","𐔑"],["f","𐔒"],
+  ["B",""],["b",""],["C",""],["c",""],["G",""],["g",""],
+  ["J",""],["j",""],["P",""],["p",""],["Q",""],["q",""],
+  ["X",""],["x",""]
+];
+
+const WRITTEN_REV = {
+  "𐔓":"th","⊣":"a","ᒲ":"e","Ж":"i","𐔂":"o","𐔄":"u",
+  "𐔅":"n","𐔆":"l","𐔇":"r","𐔈":"m","𐔉":"s","𐔊":"t",
+  "𐔋":"d","𐔌":"k","𐔍":"v","𐔎":"z","ʖ":"h","𐔐":"y","𐔑":"w","𐔒":"f"
+};
+
+const PHONETIC_FWD = [
+  ["TH","Ther"],["th","ther"],["Th","Ther"],
+  ["A","Ar"],["E","El"],["I","Is"],["O","Or"],["U","Ur"],
+  ["N","Ner"],["L","Ler"],["R","Ral"],["M","Mer"],["S","Ser"],
+  ["T","Tal"],["D","Del"],["K","Kar"],["V","Var"],["Z","Zel"],
+  ["H","Hal"],["Y","Yar"],["W","Wal"],["F","Fal"],
+  ["a","ar"],["e","el"],["i","is"],["o","or"],["u","ur"],
+  ["n","ner"],["l","ler"],["r","ral"],["m","mer"],["s","ser"],
+  ["t","tal"],["d","del"],["k","kar"],["v","var"],["z","zel"],
+  ["h","hal"],["y","yar"],["w","wal"],["f","fal"]
+];
+
+function makePat(pairs) {
+  return new RegExp(pairs.map(([k])=>k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'));
+}
+function makeMap(pairs) { return Object.fromEntries(pairs); }
+function makeRevPat(obj) {
+  return new RegExp(Object.keys(obj).map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'));
+}
+
+const wFwdPat = makePat(WRITTEN_FWD), wFwdMap = makeMap(WRITTEN_FWD);
+const wRevPat = makeRevPat(WRITTEN_REV);
+const pFwdPat = makePat(PHONETIC_FWD), pFwdMap = makeMap(PHONETIC_FWD);
+
+let script = 'written', dir = 'forward';
+
+function setScript(s) {
+  script = s;
+  document.getElementById('btn-written').classList.toggle('active', s==='written');
+  document.getElementById('btn-phonetic').classList.toggle('active', s==='phonetic');
+  const revBtn = document.getElementById('btn-rev');
+  if (s === 'phonetic') {
+    revBtn.disabled = true;
+    if (dir === 'reverse') setDir('forward');
+  } else {
+    revBtn.disabled = false;
+  }
+  reset();
+}
+
+function setDir(d) {
+  dir = d;
+  document.getElementById('btn-fwd').classList.toggle('active', d==='forward');
+  document.getElementById('btn-rev').classList.toggle('active', d==='reverse');
+  document.getElementById('lbl-in').textContent  = d==='forward' ? 'English text' : 'PickleLang';
+  document.getElementById('lbl-out').textContent = d==='forward' ? 'PickleLang'   : 'English text';
+  reset();
+}
+
+function reset() {
+  document.getElementById('input').value  = '';
+  document.getElementById('output').value = '';
+  document.getElementById('note').textContent = '';
+}
+
+function translate() {
+  const txt = document.getElementById('input').value;
+  let out = '';
+  if (script === 'written') {
+    out = dir === 'forward'
+      ? txt.replace(wFwdPat, m => wFwdMap[m])
+      : txt.replace(wRevPat, m => WRITTEN_REV[m]);
+  } else {
+    out = txt.replace(pFwdPat, m => pFwdMap[m]);
+  }
+  document.getElementById('output').value = out;
+}
+
+function copyOut() {
+  const v = document.getElementById('output').value;
+  if (!v) return;
+  navigator.clipboard.writeText(v).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+function toggleDark() {
+  const dark = document.body.classList.toggle('dark');
+  document.getElementById('dark-toggle').textContent = dark ? '☀️' : '🌙';
+  localStorage.setItem('pickleDark', dark ? '1' : '0');
+}
+
+if (localStorage.getItem('pickleDark') === '1') {
+  document.body.classList.add('dark');
+  document.getElementById('dark-toggle').textContent = '☀️';
+}
+
+reset();
+</script>
+</body>
+</html>
